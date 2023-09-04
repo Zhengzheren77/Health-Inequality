@@ -1,0 +1,194 @@
+---
+title: "Health Inequality"
+author: "Zheng"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(rgdal)
+library(maptools)
+library(sp)
+library(maps)
+library(mapdata)
+library(maptools)
+library(rgdal)
+library(ggmap)
+library(ggplot2)
+library(broom)
+library(plyr)
+library(cartogram)
+library(caret)
+```
+
+```{r, echo=FALSE, warning=FALSE}
+education = read.csv('education.csv')
+work = read.csv('working_hours.csv')
+health = read.csv('health_index.csv')
+```
+
+```{r, echo=FALSE, warning=FALSE}
+# Education data cleaning
+names(education) = c('LAD_code', 'LAD', 'Education_level', 'Description', 'Observation')
+ed_df = education %>% filter(Education_level!=6) %>%
+  mutate(index = Education_level*Observation)%>%
+  select(LAD_code, index, Observation) 
+
+ed_df = read.csv('ed_df.csv')[,-3]
+
+# Working hours data cleaning
+work = work[,-c(1,3,5)]
+names(work) = c('LAD_code', 'Work_hours', 'Observation')
+work_df = work %>% filter(Work_hours!=-8) %>%
+  mutate(index = Work_hours*Observation) %>%
+  select(LAD_code, index, Observation)
+
+work_df = read.csv('work_df.csv')[,-3]
+
+# Health index data cleaning
+health = health[,-c(2,4)]
+names(health) = c('LAD_code', 'Health_index', 'Observation')
+health_df = health %>% mutate(index = Health_index*Observation) %>%
+  select(LAD_code, index, Observation)
+
+health_df = read.csv('health_df.csv')[,-3]
+```
+
+
+```{r,echo=FALSE, warning=FALSE}
+# Loading the basic map
+shapefile = readOGR(dsn='GLTLA_DEC_2022_EW_BFC_7755317155209021260', layer = 'GLTLA_DEC_2022_EW_BFC')
+new_df <- tidy(shapefile)
+
+# Recover row name 
+temp_df <- data.frame(shapefile@data$GLTLA22CD,shapefile@data$GLTLA22NM)
+names(temp_df) <- c("region", 'district')
+# Create and append "id"
+temp_df$id <- seq(0,nrow(temp_df)-1)
+
+new_df <- join(new_df, temp_df, by="id")
+```
+
+```{r,warning=FALSE}
+gg <- ggplot() + geom_polygon(data = new_df, aes(x = long, y = lat, group = region), color = "#FFFFFF", size = 0.25)
+gg <- gg + coord_fixed(1) 
+print(gg)
+```
+
+
+
+```{r, echo=FALSE, warning=FALASE}
+colnames(ed_df) = c('region', 'Education')
+colnames(work_df) = c('region', 'Work_hours')
+colnames(health_df) = c('region', 'Health_index')
+
+df = join(ed_df, work_df, by='region', type='left')
+df = join(df, health_df, by='region')
+
+dis = read.csv('health_index.csv')[c(1,2)]
+colnames(dis) = c('region', 'districts')
+
+df = join(df, dis, by='region')
+```
+
+
+```{r,echo=FALSE, warning=FALSE}
+# Loading the full dataset for analysis
+df = read.csv('full.csv')
+```
+
+
+# EDA
+
+The main purpose here is to check if there is some correlation between health index and education level
+```{r,warning=FALSE}
+gg <- ggplot() + geom_polygon(data = df, aes(x = long, y = lat, group = region, fill = Health_index), color = "#FFFFFF", size = 0.25)
+gg <- gg + scale_fill_gradient2(low = "red", mid = "white", high = "blue", na.value = "grey")
+gg <- gg + coord_fixed(1) 
+gg <- gg + theme_minimal()
+gg <- gg + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+gg <- gg + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+gg <- gg + theme(axis.title.y=element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+print(gg)
+```
+
+
+```{r,echo=FALSE, warning=FALSE}
+gg2 <- ggplot() + geom_polygon(data = df, aes(x = long, y = lat, group = region, fill = Education), color = "#FFFFFF", size = 0.25)
+gg2 <- gg2 + scale_fill_gradient2(low = "blue", mid = "red", high = "yellow", na.value = "white")
+gg2 <- gg2 + coord_fixed(1) 
+gg2 <- gg2 + theme_minimal()
+gg2 <- gg2 + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position = 'none')
+gg2 <- gg2 + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+gg2 <- gg2 + theme(axis.title.y=element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+print(gg2)
+```
+
+```{r,echo=FALSE, warning=FALSE}
+gg3 <- ggplot() + geom_polygon(data = df, aes(x = long, y = lat, group = region, fill= Work_hours), color = "#FFFFFF", size = 0.25)
+gg3 <- gg3 + scale_fill_gradient2(low = "blue", mid = "red", high = "yellow", na.value = "white")
+gg3 <- gg3 + coord_fixed(1) 
+gg3 <- gg3 + theme_minimal()
+gg3 <- gg3 + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position = 'none')
+gg3 <- gg3 + theme(axis.title.x=element_blank(), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+gg3 <- gg3 + theme(axis.title.y=element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+print(gg3)
+```
+
+
+# Analysis the impact of the factors
+```{r, echo=FALSE, warning=FALSE}
+data = read.csv('impact.csv')
+dff = data[,c(5,3,4,6:7)]
+	
+install.packages('pheatmap') # if not installed already
+library(pheatmap)
+pheatmap(cor(dff), display_numbers = T)
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+data = read.csv('impact.csv')
+
+set.seed(42)
+train_indices = createDataPartition(data$Health_index, p = 0.75,list=FALSE)
+dtrain <- data[train_indices,]
+dtest <- data[-train_indices,]
+
+eval_results <- function(true, predicted, df) {
+    SSE <- sum((predicted - true)^2)
+    SST <- sum((true - mean(true))^2)
+    R_square <- round(1 - SSE / SST,4)
+    RMSE = round(sqrt(SSE/nrow(df)),4)
+    # Model performance metrics
+    data.frame(
+        RMSE = RMSE,
+        Rsquare = R_square
+    )
+}
+```
+
+```{r,echo=False,warning=FALSE}
+model1 = lm(Health_index~Education+Work_hours+age+sex,data=dtrain)
+summary(model1)
+eval_results(dtest$Health_index, predict(model1, dtest), dtest)
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+model2 = lm(Health_index~Education+Work_hours+age,data=dtrain)
+summary(model2)
+eval_results(dtest$Health_index, predict(model2, dtest), dtest)
+```
+
+
+```{r, echo=FALSE, warning=FALSE}
+library(randomForest)
+library(vip) 
+rf = randomForest(Health_index ~Education+Work_hours+age, data = dtrain, ntree=1000)
+rf
+vip(rf, num_features = 3, bar = FALSE)
+eval_results(dtest$Health_index, predict(rf, dtest), dtest)
+```
